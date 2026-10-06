@@ -530,8 +530,10 @@ fi
 # STRIP -Werror FROM ALL KERNEL MAKEFILES
 # ========================================
 # Strip ALL -Werror variants from every Makefile and Kbuild
-find "$KERNEL_DIR" -name "Makefile" -exec sed -i 's/ -Werror\([= ][^ ]*\)\?//g' {} \; || true
-find "$KERNEL_DIR" -name "Kbuild" -exec sed -i 's/ -Werror\([= ][^ ]*\)\?//g' {} \; || true
+# Targeted -Werror stripping — only for files that actually fail
+sed -i 's/ -Werror / /g' "${KERNEL_DIR}/drivers/gpu/drm/mediatek/mml/Makefile" || true
+sed -i 's/ -Werror / /g' "${KERNEL_DIR}/drivers/soc/mediatek/devapc/Makefile" || true
+sed -i 's/ -Werror / /g' "${KERNEL_DIR}/drivers/soc/mediatek/Makefile" || true
 
 
 # ========================================
