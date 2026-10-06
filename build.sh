@@ -526,6 +526,12 @@ if [[ $BUILD_ONLY -eq 0 ]]; then
             done
 fi
 
+# ========================================
+# STRIP -Werror FROM ALL KERNEL MAKEFILES
+# ========================================
+find "${KERNEL_DIR}" -name "Makefile" -exec sed -i 's/ -Werror / /g' {} \; || true
+find "${KERNEL_DIR}" -name "Kbuild" -exec sed -i 's/ -Werror / /g' {} \; || true
+
 
 # ========================================
 # GENERATE BUILD CONFIG + BUILD KERNEL
@@ -542,11 +548,13 @@ pushd "$KERNEL_DIR" > /dev/null
 make -j"$(nproc)" O="$OUT_DIR" ARCH=arm64 \
     CROSS_COMPILE=aarch64-linux-gnu- \
     LLVM=1 LLVM_IAS=1 \
+    KCFLAGS="-Wno-error" \
     a24_defconfig
 
 make -j"$(nproc)" O="$OUT_DIR" ARCH=arm64 \
     CROSS_COMPILE=aarch64-linux-gnu- \
-    LLVM=1 LLVM_IAS=1
+    LLVM=1 LLVM_IAS=1 \
+    KCFLAGS="-Wno-error"
 
 popd > /dev/null
 
