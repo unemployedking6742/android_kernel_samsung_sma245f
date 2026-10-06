@@ -115,9 +115,9 @@ jobs:
         run: |
           SHORT_SHA=${GITHUB_SHA::7}
           if [ "$VARIANT" = "stock" ]; then
-            echo "RELEASE_NAME=$RELEASE_TITLE A155FXXS7CYG1 A155FXXS7CYG4" >> "$GITHUB_ENV"
+            echo "RELEASE_NAME=$RELEASE_TITLE A245FXXS9DYG1" >> "$GITHUB_ENV"
           else
-            echo "RELEASE_NAME=$LEGACY_LABEL $REL_KERNEL SUSFS $REL_SUSFS A155FXXS7CYG1 A155FXXS7CYG4" >> "$GITHUB_ENV"
+            echo "RELEASE_NAME=$LEGACY_LABEL $REL_KERNEL A245FXXS9DYG1" >> "$GITHUB_ENV"
           fi
 
       - name: Upload build output as Artifacts
@@ -147,13 +147,10 @@ jobs:
         id: commit_message
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          # Try to read annotated tag contents (works for annotated tags)
           COMMIT_MESSAGE=$(git for-each-ref --format='%(contents)' refs/tags/"$TAG_NAME" 2>/dev/null || true)
-          # If empty, fallback to the commit message of HEAD (covers lightweight tags)
           if [ -z "$COMMIT_MESSAGE" ]; then
             COMMIT_MESSAGE=$(git log -1 --pretty=%B)
           fi
-          # Escape percent/newlines for $GITHUB_OUTPUT usage
           COMMIT_MESSAGE="${COMMIT_MESSAGE//'%'/'%25'}"
           COMMIT_MESSAGE="${COMMIT_MESSAGE//$'\n'/'%0A'}"
           COMMIT_MESSAGE="${COMMIT_MESSAGE//$'\r'/'%0D'}"
@@ -162,7 +159,6 @@ jobs:
       - name: Send to Telegram
         if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
         run: |
-          # Decode the escaped message from GITHUB_OUTPUT before passing to Python
           COMMIT_MESSAGE_DECODED="${COMMIT_MESSAGE//'%25'/'%'}"
           COMMIT_MESSAGE_DECODED="${COMMIT_MESSAGE_DECODED//'%0A'/$'\n'}"
           COMMIT_MESSAGE_DECODED="${COMMIT_MESSAGE_DECODED//'%0D'/$'\r'}"
