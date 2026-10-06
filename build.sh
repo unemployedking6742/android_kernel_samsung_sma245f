@@ -529,8 +529,9 @@ fi
 # ========================================
 # STRIP -Werror FROM ALL KERNEL MAKEFILES
 # ========================================
-find "${KERNEL_DIR}" -name "Makefile" -exec sed -i 's/ -Werror / /g' {} \; || true
-find "${KERNEL_DIR}" -name "Kbuild" -exec sed -i 's/ -Werror / /g' {} \; || true
+# Strip ALL -Werror variants from every Makefile and Kbuild
+find "$KERNEL_DIR" -name "Makefile" -exec sed -i 's/ -Werror\([= ][^ ]*\)\?//g' {} \; || true
+find "$KERNEL_DIR" -name "Kbuild" -exec sed -i 's/ -Werror\([= ][^ ]*\)\?//g' {} \; || true
 
 
 # ========================================
