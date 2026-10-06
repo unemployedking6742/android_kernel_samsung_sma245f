@@ -523,3 +523,5 @@ if [[ $BUILD_ONLY -eq 0 ]]; then
         --set-val IP6_NF_MATCH_HL y \
         --set-val IP6_NF_NAT y \
         --set-val NF_NAT_IPV6 y
+            done
+fi
