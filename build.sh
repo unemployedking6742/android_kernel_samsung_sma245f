@@ -525,3 +525,31 @@ if [[ $BUILD_ONLY -eq 0 ]]; then
         --set-val NF_NAT_IPV6 y
             done
 fi
+
+
+# ========================================
+# GENERATE BUILD CONFIG + BUILD KERNEL
+# ========================================
+
+gen_metadata
+
+info -n "Building kernel..."
+BUILD_START=$(_ts)
+
+pushd "$KERNEL_DIR" > /dev/null
+
+# This is the actual kernel build command
+make -j"$(nproc)" O="$OUT_DIR" ARCH=arm64 \
+    CROSS_COMPILE=aarch64-linux-gnu- \
+    LLVM=1 LLVM_IAS=1 \
+    a24_defconfig
+
+make -j"$(nproc)" O="$OUT_DIR" ARCH=arm64 \
+    CROSS_COMPILE=aarch64-linux-gnu- \
+    LLVM=1 LLVM_IAS=1
+
+popd > /dev/null
+
+BUILD_END=$(_ts)
+
+info -n "Kernel build finished."
