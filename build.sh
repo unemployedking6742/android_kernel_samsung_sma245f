@@ -535,6 +535,16 @@ sed -i 's/ -Werror / /g' "${KERNEL_DIR}/drivers/gpu/drm/mediatek/mml/Makefile" |
 sed -i 's/ -Werror / /g' "${KERNEL_DIR}/drivers/soc/mediatek/devapc/Makefile" || true
 sed -i 's/ -Werror / /g' "${KERNEL_DIR}/drivers/soc/mediatek/Makefile" || true
 
+# ========================================
+# FIX SPECIFIC SOURCE FILES
+# ========================================
+echo "Fixing MediaTek MML driver..."
+sed -i 's/static void ut_init()/static void ut_init(void)/' "${KERNEL_DIR}/drivers/gpu/drm/mediatek/mml/mtk-mml-pq-core.c" || true
+
+# Strip -Werror from all MediaTek driver Makefiles (recursive)
+find "${KERNEL_DIR}/drivers/gpu/drm/mediatek" -name "Makefile" -exec sed -i 's/ -Werror / /g' {} \; || true
+find "${KERNEL_DIR}/drivers/soc/mediatek" -name "Makefile" -exec sed -i 's/ -Werror / /g' {} \; || true
+find "${KERNEL_DIR}/drivers/misc/mediatek" -name "Makefile" -exec sed -i 's/ -Werror / /g' {} \; || true
 
 # ========================================
 # GENERATE BUILD CONFIG + BUILD KERNEL
