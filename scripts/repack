@@ -8,7 +8,7 @@ BINDIR=$(realpath "${SCRIPTDIR}/bin")
 MAGISKBOOT=$BINDIR/magiskboot
 KSUD=$BINDIR/ksud-x86_64-unknown-linux-musl
 AVBTOOL=$BINDIR/avb/avbtool.py
-KERNELPATH=$PARENTDIR/out/target/product/a15/obj/KERNEL_OBJ/kernel-5.10/arch/arm64/boot/
+KERNELPATH=$PARENTDIR/out/target/product/a24/obj/KERNEL_OBJ/kernel-5.10/arch/arm64/boot/
 WORKSPACE=$BINDIR/workspace
 CERTDIR=$BINDIR/certs
 
@@ -30,10 +30,9 @@ print_msg() {
 _log_handler() {
     local color="$1"
     local level="$2"
-    shift 2  # Remove color and level from the arguments list
+    shift 2
     
     local nl=""
-    # Now $1 is the first argument the user actually typed (e.g., -n)
     [[ "$1" == "-n" ]] && { nl="\n"; shift; }
     
     printf "${nl}%b[%s] %s%b\n" "${color}" "${level}" "$*" "${RESET}"
@@ -43,7 +42,6 @@ info() { _log_handler "${GREEN}"  "INFO"  "$@"; }
 warn() { _log_handler "${YELLOW}" "WARN"  "$@"; }
 err()  { _log_handler "${RED}"    "ERROR" "$@"; }
 
-# -------- Script header --------
 print_msg "$GREEN" " - Build script for Samsung kernel image - "
 print_msg "$RED" "       by poqdavid "
 print_msg "$RED" ""
@@ -104,9 +102,6 @@ case "$KSU_VARIANT" in
         info -n "Selected KernelSU variant: ${KSU_DIR_NAME}"
     ;;
     resukisu)
-        # ReSukiSU's own setup.sh always clones into ./KernelSU (same dir name
-        # plain --ksu uses); harmless since only one variant is ever checked
-        # out at a time.
         KSU_DIR_NAME="KernelSU"
         OUTPUT_PREFIX="resukisu"
         KSUDIR=$PARENTDIR/kernel-5.10/$KSU_DIR_NAME
@@ -118,7 +113,6 @@ case "$KSU_VARIANT" in
     ;;
 esac
 
-# Check requirements and environment
 checks() {
     info -n "Starting environment checks..."
     
@@ -200,7 +194,6 @@ checks() {
         info -n "python3 is installed."
     fi
     
-    # Uncompress if needed
     if [ -f "${PARENTDIR}/repackfiles/boot.img.lz4" ]; then
         info -n "Found boot.img.lz4. Decompressing now..."
         lz4 -B6 --content-size -f repackfiles/boot.img.lz4 repackfiles/boot.img
@@ -209,7 +202,6 @@ checks() {
         info -n "No compressed boot image detected."
     fi
     
-    # Check if boot image is available
     if [ ! -f "${PARENTDIR}/repackfiles/boot.img" ]; then
         err -n "boot.img not found in ${PARENTDIR}!"
         err -n "Please place your boot.img in ${PARENTDIR}."
@@ -221,7 +213,6 @@ checks() {
     info -n "Environment checks completed successfully."
 }
 
-# Unpacking the boot.img
 unpack() {
     info -n "Generating a signing key (if not already present)..."
     if [ ! -f $CERTDIR/sign.pub.bin ]; then
@@ -245,7 +236,6 @@ unpack() {
     info -n "Returning to parent directory..."
 }
 
-# Repacking the Kernel image to boot.img
 repack() {
     if [ ! -f "${KERNELPATH}/Image" ]; then
         err -n "No Kernel Image found in ${KERNELPATH}!"
@@ -256,7 +246,6 @@ repack() {
         cp -f "${KERNELPATH}/Image" "${WORKSPACE}/kernel"
         info -n "Kernel Image copied successfully."
         
-        # Repacking boot image
         info -n "Starting repacking of boot image..."
         pushd "$WORKSPACE" > /dev/null
         $MAGISKBOOT repack "${PARENTDIR}/repackfiles/boot.img" "${WORKSPACE}/new-boot.img"
@@ -272,9 +261,6 @@ repack() {
         info -n "Signing boot image..."
         python3 "${AVBTOOL}" add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image $WORKSPACE/new-boot-signed.img --algorithm SHA256_RSA4096 --key $CERTDIR/sign.pk8
         
-        ## Alternative options to sign the boot image
-        #python3 "${AVBTOOL}" add_hash_footer --partition_name boot --partition_size $(wc -c $WORKSPACE/new-boot-signed.img | cut -f 1 -d ' ') --image $WORKSPACE/new-boot-signed.img --algorithm SHA256_RSA4096 --key $CERTDIR/sign.pk8
-        #$MAGISKBOOT sign $WORKSPACE/new-boot-signed.img $CERTDIR/sign.pem
         info -n "Boot image signed successfully."
         
         mv $WORKSPACE/new-boot-signed.img $PARENTDIR/repackfiles/boot-repacked-signed.img
@@ -288,33 +274,18 @@ repack() {
 package_tar() {
     info -n "Packaging boot-repacked-signed.img into tar archive..."
     
-    susfs_header="${PARENTDIR}/kernel-5.10/include/linux/susfs.h"
-    
-    if [[ -f "$susfs_header" ]]; then
-        susfs_version=$(grep -oP '#define\s+SUSFS_VERSION\s+"\K[^"]+' "$susfs_header")
-    fi
-    
     if [[ "$KSU_VARIANT" == "stock" ]]; then
-        # No KSU repo to derive a build number from, so tag the package with
-        # the actual kernel release baked into the Image, if we can read it.
         VERSION_TAG=$(strings "${KERNELPATH}/Image" 2>/dev/null | grep -m1 -oP 'Linux version \K[0-9]+\.[0-9]+\.[0-9]+')
         if [[ -z "$VERSION_TAG" ]]; then
             warn -n "Could not read kernel release from Image. Falling back to build date."
             VERSION_TAG=$(date +%Y%m%d)
         fi
     else
-        # Sum every standalone integer on the "expr ..." version line rather than
-        # just the first one -- some forks (e.g. ReSukiSU) add extra offsets like
-        # "expr 30000 + $(KSU_LOCAL_VERSION) + 700".
         BASE_VERSION=$(grep -m1 'expr' ${KSUDIR}/kernel/Kbuild | grep -oP '(?<![.\w])[0-9]+(?!\w)' | awk '{s+=$1} END{print s+0}')
         VERSION_TAG=$(( $(git -C ${KSUDIR} rev-list --count HEAD) + BASE_VERSION ))
     fi
     
-    if [[ -z "$susfs_version" ]]; then
-        OUTTAR="../${OUTPUT_PREFIX}_${VERSION_TAG}_A155FXXS7CYG4_A15_GKI.tar"
-    else
-        OUTTAR="../${OUTPUT_PREFIX}_${VERSION_TAG}_susfs_${susfs_version}_A155FXXS7CYG4_A15_GKI.tar"
-    fi
+    OUTTAR="../${OUTPUT_PREFIX}_${VERSION_TAG}_A245FXXS9DYG1_A24_GKI.tar"
     
     if [ ! -f "${PARENTDIR}/repackfiles/boot-repacked-signed.img" ]; then
         err -n "Signed repacked boot image not found at ${PARENTDIR}/boot-repacked-signed.img"
@@ -322,7 +293,6 @@ package_tar() {
         return 1
     fi
     
-    # Work in a temporary directory to control archive member names
     TMPDIR=$(mktemp -d)
     
     info -n "Created temp directory at $TMPDIR"
@@ -332,10 +302,8 @@ package_tar() {
         info -n "Created release directory at ${PARENTDIR}/release"
     fi
     
-    # Copy/sign image as boot.img inside temp dir so tar entry is named boot.img
     cp -f "${PARENTDIR}/repackfiles/boot-repacked-signed.img" "${TMPDIR}/boot.img"
     
-    # Also include vbmeta.img.lz4 if it exists in parent dir
     if [[ -f "${PARENTDIR}/repackfiles/vbmeta.img.lz4" && "$INCLUDE_VBMETA" == true ]]; then
         cp -f "${PARENTDIR}/repackfiles/vbmeta.img.lz4" "${TMPDIR}/vbmeta.img.lz4"
         SRCFILES="boot.img vbmeta.img.lz4"
@@ -343,11 +311,9 @@ package_tar() {
         SRCFILES="boot.img"
     fi
     
-    # Create the tar using ustar header type and write to the requested output path
     cd "$TMPDIR"
     tar -H ustar -c -f "${PARENTDIR}/release/${OUTTAR##*/}" $SRCFILES
     
-    # Move tar to the parent directory if created in TMPDIR (tar created there already)
     if [ -f "${PARENTDIR}/release/${OUTTAR##*/}" ]; then
         info -n "Tar archive created at ${PARENTDIR}/release/${OUTTAR##*/}"
     else
@@ -355,17 +321,13 @@ package_tar() {
         return 1
     fi
     
-    # Explicit cleanup of temporary directory and remove trap
     trap 'rm -rf "$TMPDIR"' EXIT
     
     info -n "Deleted temp directory at $TMPDIR"
-    
-    # Cleanup handled by trap
     info -n "Packaging completed successfully."
     return 0
 }
 
-# Execute all functions
 checks
 unpack
 repack
