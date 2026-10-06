@@ -25,7 +25,7 @@ if [[ "$KSU_VARIANT" == "ksun" ]]; then
     KSU_DIR="KernelSU-Next"
     KSU_LABEL="KernelSU Next"
     KSU_DISCORD_LABEL="KernelSUNext"
-    SUSFS_KSU_INTERNAL_PATCH_DESC="pershoot-fork SUSFS patch (10_pershoot_enable_susfs_for_ksun.patch)"
+    SUSFS_KSU_INTERNAL_PATCH_DESC=""
     SUSFS_BUILTIN=0
     elif [[ "$KSU_VARIANT" == "ksu" ]]; then
     KERNELSU_SETUP_URL="https://raw.githubusercontent.com/poqdavid/KernelSU/main/kernel/setup.sh"
@@ -34,19 +34,16 @@ if [[ "$KSU_VARIANT" == "ksun" ]]; then
     KSU_DIR="KernelSU"
     KSU_LABEL="KernelSU"
     KSU_DISCORD_LABEL="KernelSU"
-    SUSFS_KSU_INTERNAL_PATCH_DESC="upstream SUSFS patch (10_enable_susfs_for_ksu.patch)"
+    SUSFS_KSU_INTERNAL_PATCH_DESC=""
     SUSFS_BUILTIN=0
     elif [[ "$KSU_VARIANT" == "resukisu" ]]; then
     KERNELSU_SETUP_URL="https://raw.githubusercontent.com/poqdavid/ReSukiSU/main/kernel/setup.sh"
     KERNELSU_SETUP_BRANCH="main"
-    # ReSukiSU's own setup.sh always clones into ./KernelSU (same name --ksu uses).
-    # That's fine: the variants are mutually exclusive and the clean step wipes
-    # ./KernelSU either way, but avoid --no-clean when switching --ksu <-> --resukisu.
     KSU_DIR="KernelSU"
     KSU_LABEL="ReSukiSU"
     KSU_DISCORD_LABEL="ReSukiSU"
-    SUSFS_KSU_INTERNAL_PATCH_DESC="built-in (ReSukiSU ships its own SUSFS hooks; no glue patch needed)"
-    SUSFS_BUILTIN=1
+    SUSFS_KSU_INTERNAL_PATCH_DESC=""
+    SUSFS_BUILTIN=0
 else
     KSU_DIR=""
     KSU_LABEL="None"
@@ -77,9 +74,6 @@ if [[ ! -d "$(pwd)/logs" ]]; then
     mkdir -p "$(pwd)/logs"
 fi
 
-# Strip ANSI color codes from the log file output, but keep them in the terminal.
-# The logger ignores INT/TERM/HUP so a Ctrl+C doesn't kill it before the exit
-# cleanup has run (it still exits on its own once this script closes stdout).
 exec > >(trap '' INT TERM HUP; exec tee >(sed "s/$(printf '\033')\\[[0-9;]*m//g" >> "$LOGFILE")) 2>&1
 
 _calc_runtime() {
@@ -88,7 +82,7 @@ _calc_runtime() {
         echo "N/A"
     else
         if [[ -z "$end" || "$end" -eq 0 ]]; then
-            end=$(date +%s) # Calculate elapsed time if process didn't finish
+            end=$(date +%s)
         fi
         if [[ "$end" -lt "$start" ]]; then
             echo "N/A"
@@ -108,7 +102,6 @@ send_discord_file() {
         return 0
     fi
     
-    # Safely handle potentially unset timestamps
     local config_time=$(_calc_runtime "${CONFIG_START:-0}" "${CONFIG_END:-0}")
     local patch_time=$(_calc_runtime "${PATCH_START:-0}" "${PATCH_END:-0}")
     local build_time=$(_calc_runtime "${BUILD_START:-0}" "${BUILD_END:-0}")
@@ -118,13 +111,11 @@ send_discord_file() {
         status_emoji="❌"
     fi
     
-    # Format the content string to ping the user if the ID is provided
     local content_str=""
     if [[ -n "$DISCORD_USER_ID" ]]; then
         content_str="\"content\":\"<@$DISCORD_USER_ID>\", "
     fi
     
-    # Use bash parameter expansion ${VAR:-N/A} to print N/A if the variable is unbound or empty
     curl -s \
     -F "payload_json={
         $content_str
@@ -136,7 +127,6 @@ send_discord_file() {
             { \"name\": \"🐧 Kernel Version\", \"value\": \"${kernel_version:-N/A}\", \"inline\": true },
             { \"name\": \"📱 Android Version\", \"value\": \"${android_version:-N/A}\", \"inline\": true },
             { \"name\": \"🐧 ${KSU_DISCORD_LABEL} Version\", \"value\": \"${KSU_VERSION:-Vanilla}\", \"inline\": true },
-            { \"name\": \"🛡️ SUSFS Version\", \"value\": \"${SUSFS_VER:-N/A}\", \"inline\": false },
             { \"name\": \"⏱️ Config Time\", \"value\": \"${config_time}\", \"inline\": true },
             { \"name\": \"⏱️ Patch Time\", \"value\": \"${patch_time}\", \"inline\": true },
             { \"name\": \"⏱️ Build Time\", \"value\": \"${build_time}\", \"inline\": true }
@@ -158,14 +148,11 @@ SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PATCHES="$(realpath "$SCRIPT_DIR/patches")"
 KERNEL_PATCHES="$(realpath "$PATCHES/kernel_patches")"
-SUSFS_PATCHES="$(realpath "$PATCHES/susfs4ksu")"
 ZEROMOUNT_PATCHES="$(realpath "$PATCHES/zeromount")"
 DEFAULT_KERNEL_DIR="$(find . -maxdepth 1 -type d -name "kernel-*" | head -n1)"
-DEFAULT_DEFCONFIG="arch/arm64/configs/a15_00_defconfig"
-OTHER_DEFCONFIG="arch/arm64/configs/a15_defconfig"
-DEFAULT_OUT="../out/target/product/a15/obj/KERNEL_OBJ"
-# KERNELSU_SETUP_URL / BASE_KSU_VERSION / KSU_DIR / KSU_LABEL are set by the
-# --ksu / --ksun pre-scan near the top of this script.
+DEFAULT_DEFCONFIG="arch/arm64/configs/a24_defconfig"
+OTHER_DEFCONFIG="arch/arm64/configs/a24_defconfig"
+DEFAULT_OUT="../out/target/product/a24/obj/KERNEL_OBJ"
 KSU_VERSION="N/A"
 MIN_VERSION="5.16"
 
@@ -176,7 +163,6 @@ popd > /dev/null
 
 kernel_version=$(echo "$KERNELVERSION" | cut -d. -f1,2)
 
-# -------- Colors & logging --------
 RED="\e[1;31m"
 GREEN="\e[1;32m"
 YELLOW="\e[1;33m"
@@ -202,11 +188,9 @@ info() { _log_handler "${GREEN}"  "INFO"  "$@"; }
 warn() { _log_handler "${YELLOW}" "WARN"  "$@"; }
 err()  { _log_handler "${RED}"    "ERROR" "$@"; }
 
-# -------- Script header --------
 print_msg "$GREEN" " - Build script for Samsung kernel image - "
 print_msg "$RED" "       by poqdavid "
 
-# -------- Timing support --------
 _ts() { date +%s; }
 _print_runtime() {
     local label=$1 start=$2 end=$3
@@ -218,7 +202,6 @@ _print_runtime() {
     fi
 }
 
-# -------- CLI parsing --------
 KERNEL_DIR="$DEFAULT_KERNEL_DIR"
 OUT_DIR="$DEFAULT_OUT"
 NO_CLEAN=0
@@ -245,9 +228,9 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --kernel-dir) KERNEL_DIR="$2"; shift 2;;
         --out-dir) OUT_DIR="$2"; shift 2;;
-        --ksu) shift;;       # already handled by the pre-scan; consume it here so parsing doesn't error
-        --ksun) shift;;      # already handled by the pre-scan; consume it here so parsing doesn't error
-        --resukisu) shift;;  # already handled by the pre-scan; consume it here so parsing doesn't error
+        --ksu) shift;;
+        --ksun) shift;;
+        --resukisu) shift;;
         --no-clean) NO_CLEAN=1; shift;;
         --no-patch) NO_PATCH=1; shift;;
         --no-susfs) NO_SUSFS=1; shift;;
@@ -302,7 +285,6 @@ if [[ -n "$JOBS" ]]; then
     export MAKEFLAGS="-j$JOBS"
 fi
 
-# -------- Preconditions: required commands --------
 CMDMISSING=0
 require_cmds=(bash sed awk find git patch curl printf)
 
@@ -310,7 +292,7 @@ PYTHON_BIN=""
 if command -v python3 >/dev/null 2>&1; then
     PYTHON_BIN=python3
 else
-    require_cmds+=(python3) # force readable error later
+    require_cmds+=(python3)
 fi
 
 for c in "${require_cmds[@]}"; do
@@ -320,33 +302,27 @@ for c in "${require_cmds[@]}"; do
     fi
 done
 
-# 2. Check if any commands were missing
 if [ $CMDMISSING -eq 1 ]; then
     echo "--------------------------------------------------"
     echo "Please install the missing packages and try again."
     exit 2
 fi
 
-# Timestamps
 CONFIG_START=0; CONFIG_END=0
 PATCH_START=0; PATCH_END=0
 BUILD_START=0; BUILD_END=0
 
-# -------- Toolchain: generic `ld` -> ld.lld (removed again on exit) --------
-# Set when this run owns the ld symlink; removed again by cleanup() on exit
 GENERIC_LD_LINK=""
-GENERIC_LD_PREV=""   # previous target, if we replaced someone else's ld symlink
+GENERIC_LD_PREV=""
 
 ensure_generic_ld() {
     local build_root clang_bin bin_dir lld_path
     build_root="$(realpath "$KERNEL_DIR/../kernel")"
     
-    # Use the exact clang the kernel build uses (same value _setup_env.sh reads)
     clang_bin="$(grep -m1 '^CLANG_PREBUILT_BIN=' "$KERNEL_DIR/build.config.common" 2>/dev/null | cut -d= -f2- || true)"
     bin_dir="$build_root/$clang_bin"
     
     if [[ -z "$clang_bin" || ! -e "$bin_dir/ld.lld" ]]; then
-        # Fallback: search prebuilts-master, following symlinks
         lld_path="$(find -L "$build_root/prebuilts-master" -name 'ld.lld' -print -quit 2>/dev/null || true)"
         if [[ -z "$lld_path" ]]; then
             warn -n "No ld.lld found under $build_root/prebuilts-master; skipping generic ld symlink."
@@ -359,8 +335,6 @@ ensure_generic_ld() {
         info -n "A real 'ld' already exists in $bin_dir; leaving it alone."
         elif [[ "$(readlink "$bin_dir/ld" 2>/dev/null)" == "ld.lld" ]]; then
         info -n "ld -> ld.lld already present in $bin_dir"
-        # Most likely left behind by a run that was killed with -9; adopt it so
-        # it gets removed this time (unless it's committed to the repo)
         if ! git -C "$bin_dir" ls-files --error-unmatch ld >/dev/null 2>&1; then
             GENERIC_LD_LINK="$bin_dir/ld"
         fi
@@ -377,7 +351,6 @@ remove_generic_ld() {
     [[ -n "$link" ]] || return 0
     GENERIC_LD_LINK=""
     
-    # Only touch it if it's still our symlink
     if [[ -L "$link" && "$(readlink "$link" 2>/dev/null)" == "ld.lld" ]]; then
         rm -f "$link" || true
         if [[ -n "${GENERIC_LD_PREV:-}" ]]; then
@@ -390,7 +363,6 @@ remove_generic_ld() {
 }
 
 cleanup() {
-    # Unlink first: it must happen even if printing below fails
     remove_generic_ld
     echo " "
     _print_runtime "Config runtime" "$CONFIG_START" "$CONFIG_END"
@@ -399,7 +371,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Ctrl+C / kill / closed terminal: exit through the EXIT trap so cleanup runs
 on_cancel() {
     trap - INT TERM HUP
     trap - ERR
@@ -411,7 +382,6 @@ trap 'on_cancel INT 130' INT
 trap 'on_cancel TERM 143' TERM
 trap 'on_cancel HUP 129' HUP
 
-# 1. Clean Step
 if [[ $NO_CLEAN -eq 0 ]]; then
     
     info -n "Started cleaning up..."
@@ -437,16 +407,14 @@ patch -p1 --forward < ./patches/enable-python3-support.patch || true
 
 gen_metadata(){
     
-    # 3. Metadata Configuration
     info -n "Configuring Kernel metadata..."
     pushd "$KERNEL_DIR" > /dev/null
     sed -i '$s|echo "\$res"|echo "-android12-9-31117096"|' ./scripts/setlocalversion
     perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Thu Jul 31 08:40:06 UTC 2025"}' ./scripts/mkcompile_h
     sed -i 's/-dirty//' ./scripts/setlocalversion
     
-    # 4. Generate build.config
     info -n "Generating build configs..."
-    python3 scripts/gen_build_config.py --kernel-defconfig a15_00_defconfig --kernel-defconfig-overlays entry_level.config -m user -o $OUT_DIR/build.config
+    python3 scripts/gen_build_config.py --kernel-defconfig a24_defconfig --kernel-defconfig-overlays entry_level.config -m user -o $OUT_DIR/build.config
     if [[ $BUILD_ONLY -eq 0 ]]; then
         info -n "Applying fake_config.patch..."
         patch -p1 --forward < $PATCHES/fake_config.patch || true
@@ -455,7 +423,6 @@ gen_metadata(){
     
 }
 
-# 2. Config Modifications (Samsung & Optimizations)
 if [[ $BUILD_ONLY -eq 0 ]]; then
     CONFIG_START=$(_ts)
     info -n "Modifying configs..."
@@ -467,7 +434,6 @@ if [[ $BUILD_ONLY -eq 0 ]]; then
         info -n "$DEFCONFIG"
         
         info -n "Settings Samsung & Security configs..."
-        # Samsung & Security
         $CONFIG_TOOL --file $DEFCONFIG \
         --set-val UH n \
         --set-val RKP n \
@@ -507,26 +473,10 @@ if [[ $BUILD_ONLY -eq 0 ]]; then
         info -n "Setting optimization configs..."
         
         info "Adding BBG support..."
-        # BBG support
         $CONFIG_TOOL --file $DEFCONFIG \
         --set-val BBG y
         
-        info "Adding Droidspaces support..."
-        # Droidspaces support
-        $CONFIG_TOOL --file $DEFCONFIG \
-        --set-val SYSVIPC y \
-        --set-val DEVTMPFS y \
-        --set-val IPC_NS y \
-        --set-val PID_NS y \
-        --set-val POSIX_MQUEUE y \
-        --set-val NETFILTER_XT_TARGET_REJECT y \
-        --set-val NETFILTER_XT_TARGET_LOG y \
-        --set-val NETFILTER_XT_MATCH_RECENT y \
-        --set-val CONFIG_USER_NS y \
-        --set-val NTSYNC y
-        
         info "Adding BBR3 Support Support..."
-        # BBR Support
         $CONFIG_TOOL --file $DEFCONFIG \
         --set-val TCP_CONG_ADVANCED y \
         --set-val TCP_CONG_BBR y \
@@ -547,7 +497,6 @@ if [[ $BUILD_ONLY -eq 0 ]]; then
         --set-val DEFAULT_CUBIC n \
         
         info "Adding IP SET & IPv6_NAT Support..."
-        #IP SET & IPv6_NAT Support
         $CONFIG_TOOL --file $DEFCONFIG \
         --set-val IP_SET y \
         --set-val IP_SET_MAX 65534 \
@@ -573,320 +522,4 @@ if [[ $BUILD_ONLY -eq 0 ]]; then
         --set-val IP6_NF_TARGET_HL y \
         --set-val IP6_NF_MATCH_HL y \
         --set-val IP6_NF_NAT y \
-        --set-val NF_NAT_IPV6 y \
-        --set-val IP6_NF_TARGET_MASQUERADE y
-        
-        info "Adding CRYPTO_LZO Support..."
-        $CONFIG_TOOL --file $DEFCONFIG \
-        --set-val CRYPTO_LZO y
-        
-        if [[ "$KSU_VARIANT" != "none" ]]; then
-            info -n "Setting $KSU_LABEL & SUSFS configs..."
-            # KernelSU & SUSFS
-            $CONFIG_TOOL --file $DEFCONFIG \
-            --set-val KSU y \
-            --set-val KSU_KPROBES_HOOK n \
-            --set-val KSU_SUSFS y \
-            --set-val KSU_SUSFS_HAS_MAGIC_MOUNT y \
-            --set-val KSU_SUSFS_SUS_PATH y \
-            --set-val KSU_SUSFS_SUS_MOUNT y \
-            --set-val KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT y \
-            --set-val KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT y \
-            --set-val KSU_SUSFS_SUS_KSTAT y \
-            --set-val KSU_SUSFS_SUS_OVERLAYFS n \
-            --set-val KSU_SUSFS_TRY_UMOUNT y \
-            --set-val KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT y \
-            --set-val KSU_SUSFS_SPOOF_UNAME y \
-            --set-val KSU_SUSFS_ENABLE_LOG y \
-            --set-val KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS y \
-            --set-val KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG y \
-            --set-val KSU_SUSFS_OPEN_REDIRECT y \
-            --set-val KSU_SUSFS_SUS_MAP y \
-            --set-val KSU_SUSFS_SUS_SU n \
-            --set-val OVERLAY_FS y \
-            --set-val TMPFS_XATTR y \
-            --set-val TMPFS_POSIX_ACL y
-            
-            if [[ "$KSU_VARIANT" == "resukisu" ]]; then
-                $CONFIG_TOOL --file $DEFCONFIG \
-                --undefine KSU_TRACEPOINT_HOOK \
-                --undefine KSU_MANUAL_HOOK \
-                --set-val KSU_MULTI_MANAGER_SUPPORT y \
-                --set-str KSU_FULL_NAME_FORMAT "%TAG_NAME%-%COMMIT_SHA%-NyxKernel@%REPO_NAME%"
-            fi
-        else
-            info -n "Skipping KernelSU & SUSFS configs (vanilla kernel selected)..."
-        fi
-        
-        if grep -q '^CONFIG_LSM=' "$DEFCONFIG"; then
-            info -n "CONFIG_LSM found, adding baseband_guard"
-            sed -i '/^CONFIG_LSM=/ s/"$/,baseband_guard"/' "$DEFCONFIG"
-        fi
-        
-    done
-    
-    # 3. Metadata Configuration
-    gen_metadata
-    
-    CONFIG_END=$(_ts)
-else
-    CONFIG_START=$(_ts)
-    
-    gen_metadata
-    
-    CONFIG_END=$(_ts)
-fi
-
-# 5. Patching / Setup
-if [[ $NO_PATCH -eq 0 && $BUILD_ONLY -eq 0 ]]; then
-    PATCH_START=$(_ts)
-    
-    pushd "$KERNEL_DIR" > /dev/null
-    
-    # Only fetch and setup KernelSU/SUSFS if a variant was selected
-    if [[ "$KSU_VARIANT" != "none" ]]; then
-        info -n "Setting up $KSU_LABEL..."
-        curl -LSs $KERNELSU_SETUP_URL | bash -s $KERNELSU_SETUP_BRANCH
-        
-        if [[ -d "./$KSU_DIR" ]]; then
-            # Version Detection
-            pushd "./$KSU_DIR/kernel" > /dev/null
-            # Sum every standalone integer on the "expr ..." version line rather than
-            # just the first one -- some forks (e.g. ReSukiSU) add extra offsets like
-            # "expr 30000 + $(KSU_LOCAL_VERSION) + 700".
-            BASE_VERSION=$(grep -m1 'expr' Kbuild | grep -oP '(?<![.\w])[0-9]+(?!\w)' | awk '{s+=$1} END{print s+0}')
-            info -n "Detected $KSU_LABEL Base Version: $BASE_VERSION"
-            
-            KSU_VERSION=$(expr $(git rev-list --count HEAD) "+" $BASE_VERSION)
-            info -n "Detected $KSU_LABEL Version: $KSU_VERSION"
-            
-            if [ -n "${GITHUB_ENV:-}" ]; then
-                info -n "Writing $KSU_LABEL version to GitHub Actions environment..."
-                echo "REL_KERNEL=$KSU_VERSION" >> "$GITHUB_ENV"
-            fi
-            
-            popd > /dev/null
-            
-            if [[ $NO_SUSFS -eq 0 ]]; then
-                info -n "Copying SUSFS patches to kernel source..."
-                cp $SUSFS_PATCHES/kernel_patches/fs/* ./fs/
-                cp $SUSFS_PATCHES/kernel_patches/include/linux/* ./include/linux/
-                
-                # Get SUSFS version from header we just copied
-                SUSFS_VER=$(grep '#define SUSFS_VERSION' ./include/linux/susfs.h | awk -F'"' '{print $2}' || echo "N/A")
-                info -n "Detected SUSFS Version: $SUSFS_VER"
-                
-                if [ -n "${GITHUB_ENV:-}" ]; then
-                    info -n "Writing SUSFS version to GitHub Actions environment..."
-                    echo "REL_SUSFS=$SUSFS_VER" >> "$GITHUB_ENV"
-                fi
-                
-                # Patch Main Kernel
-                info -n "Patching SUSFS into Kernel..."
-                patch -p1 < $SUSFS_PATCHES/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch || true
-                
-                # Samsung Specific Patches
-                info -n "Applying Samsung device patches..."
-                for rej in $(find ./ -maxdepth 8 -name "*.rej" -exec basename {} .rej \;); do
-                    FIX_PATCH="$KERNEL_PATCHES/samsung/SM-A155F-Oneui7/fix_$rej.patch"
-                    if [[ -f "$FIX_PATCH" ]]; then
-                        info "Patching $rej"
-                        patch -p1 --forward < "$FIX_PATCH" || true
-                    else
-                        warn -n "No fix patch found for $rej; skipping."
-                    fi
-                done
-                
-                # Patch $KSU_LABEL internal
-                pushd "./$KSU_DIR" > /dev/null
-                if [[ $SUSFS_BUILTIN -eq 0 ]]; then
-                    info -n "Patching SUSFS into $KSU_LABEL ($SUSFS_KSU_INTERNAL_PATCH_DESC)..."
-                    if [[ "$KSU_VARIANT" == "ksun" ]]; then
-                        patch -p1 --forward < $PATCHES/10_pershoot_enable_susfs_for_ksun.patch || true
-                    else
-                        patch -p1 --forward < $SUSFS_PATCHES/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
-                    fi
-                    
-                    REJ_FILES=$(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;)
-                    
-                    if [[ "$KSU_VARIANT" != "ksu" ]]; then
-                        FIX_PATCH_BASE="$KERNEL_PATCHES/next/susfs_fix_patches/$SUSFS_VER"
-                    else
-                        FIX_PATCH_BASE="$KERNEL_PATCHES/ksu/susfs_fix_patches/$SUSFS_VER"
-                    fi
-                    
-                    if [[ -z "$REJ_FILES" ]]; then
-                        info -n "No .rej files found. Nothing to patch."
-                    else
-                        info -n "Patching .rej fixes in $KSU_LABEL..."
-                        for rej in $REJ_FILES; do
-                            FIX_PATCH="$FIX_PATCH_BASE/fix_$rej.patch"
-                            
-                            if [[ -f "$FIX_PATCH" ]]; then
-                                info -n "Patching $rej"
-                                patch -p1 --forward < "$FIX_PATCH" || true
-                            else
-                                warn -n "No fix patch found for $rej; skipping."
-                            fi
-                        done
-                    fi
-                else
-                    info -n "$KSU_LABEL ships its own SUSFS hooks ($SUSFS_KSU_INTERNAL_PATCH_DESC); skipping internal glue patch."
-                fi
-                
-                # Multi-manager Support for SUSFS
-                if [[ "$KSU_VARIANT" == "ksun" ]]; then
-                    if [ "$KSU_VERSION" -le 33095 ]; then
-                        info -n "Patching Multi-manager Support for SusFS kernel!"
-                        patch -p1 --forward < "$KERNEL_PATCHES/next/susfs_fix_patches/$SUSFS_VER/multi_manager.patch" ||true
-                    else
-                        info -n "Skipping Multi-manager patch for newer KernelSU versions (>= 33096)"
-                    fi
-                    
-                    if [ "$KSU_VERSION" -ge 33068 ] && [ "$KSU_VERSION" -lt 33070 ]; then
-                        echo ""
-                        info -n "Patching Multi-manager sepolicy Support for SusFS kernel!"
-                        patch -p1 --forward < "$KERNEL_PATCHES/next/susfs_fix_patches/$SUSFS_VER/multi_sepolicy_fix.patch" ||true
-                    else
-                        info -n "Skipping Multi-manager sepolicy patch for KernelSU versions outside 33068-33069"
-                    fi
-                else
-                    info -n "Skipping Multi-manager patches; not applicable to $KSU_LABEL."
-                fi
-                popd > /dev/null
-                
-            else
-                warn -n "SUSFS support is disabled; skipping SUSFS-related patches."
-            fi
-        else
-            err "$KSU_LABEL setup failed! Please check the output above for errors."
-            exit 1
-        fi
-    fi
-    
-    # ---> Common Kernel Optimizations (These run for all builds) <---
-    info -n "Applying common kernel optimization patches..."
-    patch -p1 --forward < "$KERNEL_PATCHES/common/optimized_mem_operations.patch"
-    patch -p1 --forward < "$KERNEL_PATCHES/common/file_struct_8bytes_align.patch"
-    patch -p1 --forward < "$KERNEL_PATCHES/common/reduce_cache_pressure.patch"
-    patch -p1 --forward < "$KERNEL_PATCHES/common/mem_opt_prefetch.patch"
-    
-    info -n "Applying zram-kernel-fixes_android12_5.10 patch..."
-    patch -p1 --forward < "$PATCHES/zram-kernel-fixes_android12_5.10.patch"
-    
-    info -n "Applying optimise_noneon_memcmp_android12_5.10 patch..."
-    patch -p1 --forward < "$PATCHES/optimise_noneon_memcmp_android12_5.10.patch"
-    
-    info -n "Applying pm_wakeup_event patch..."
-    patch -p1 --forward < "$KERNEL_PATCHES/common/minimise_wakeup_time.patch"
-    patch -p1 --forward < "$KERNEL_PATCHES/common/int_sqrt.patch"
-    patch -p1 --forward < "$KERNEL_PATCHES/common/force_tcp_nodelay.patch"
-    patch -p1 --forward < "$KERNEL_PATCHES/common/reduce_gc_thread_sleep_time.patch"
-    patch -p1 --forward < "$KERNEL_PATCHES/common/add_timeout_wakelocks_globally.patch"
-    patch -p1 --forward < "$KERNEL_PATCHES/common/f2fs_reduce_congestion.patch"
-    patch -p1 --forward < "$KERNEL_PATCHES/common/reduce_freeze_timeout.patch"
-    
-    info -n "Applying clear_page_16bytes_align patch..."
-    if [ "$(printf '%s\n' "${kernel_version}" "$MIN_VERSION" | sort -V | head -n1)" = "${kernel_version}" ]; then
-        patch -p1 --forward < "$KERNEL_PATCHES/common/clear_page_16bytes_align.patch"
-    else
-        cat "$KERNEL_PATCHES/common/clear_page_16bytes_align.patch" | sed -e 's/SYM_FUNC_START_PI(clear_page)/SYM_FUNC_START_PI(__pi_clear_page)/' | patch -p1 -F3 --forward
-    fi
-    
-    info -n "Applying add_limitation_scaling_min_freq patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/add_limitation_scaling_min_freq.patch"
-    info -n "Applying re_write_limitation_scaling_min_freq patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/re_write_limitation_scaling_min_freq.patch"
-    info -n "Applying adjust_cpu_scan_order patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/adjust_cpu_scan_order.patch"
-    
-    info -n "Applying avoid_extra_s2idle_wake_attempts patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/avoid_extra_s2idle_wake_attempts.patch"
-    
-    info -n "Applying disable_cache_hot_buddy patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/disable_cache_hot_buddy.patch"
-    info -n "Applying f2fs_enlarge_min_fsync_blocks patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/f2fs_enlarge_min_fsync_blocks.patch"
-    info -n "Applying increase_ext4_default_commit_age patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/increase_ext4_default_commit_age.patch"
-    info -n "Applying increase_sk_mem_packets patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/increase_sk_mem_packets.patch"
-    info -n "Applying reduce_pci_pme_wakeups patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/reduce_pci_pme_wakeups.patch"
-    info -n "Applying reduce_s2idle_wakeups patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/silence_irq_cpu_logspam.patch"
-    info -n "Applying silence_system_logspam patch..."
-    patch -p1 -F3 --forward < "$KERNEL_PATCHES/common/silence_system_logspam.patch"
-    info -n "Applying use_unlikely_wrap_cpufreq patch..."
-    patch -p1 --forward < "$KERNEL_PATCHES/common/use_unlikely_wrap_cpufreq.patch"
-    
-    info -n "Applying BBRv3 patch..."
-    patch -p1 < "$KERNEL_PATCHES/common/bbrv3/0001-net-tcp-backport-BBRv3-to-${android_version}-${kernel_version}.patch"
-    
-    if [ "${android_version}" = "android12" ] && [ "${kernel_version}" = "5.10" ]; then
-        if ! grep -qF 'int proc_dou8vec_minmax(' ./include/linux/sysctl.h; then
-            info -n "Applying BBRv3 sysctl_add_proc_dou8vec_minmax patch..."
-            patch -p1 < "$KERNEL_PATCHES/common/bbrv3/sysctl_add_proc_dou8vec_minmax.patch"
-            
-            info -n "Applying BBRv3 sysctl_fix_data"
-            patch -p1 < "$KERNEL_PATCHES/common/bbrv3/sysctl_fix_data-races_in_proc_dou8vec_minmax.patch"
-        fi
-    fi
-    
-    info -n "Setting up Baseband Guard..."
-    curl -LSs https://github.com/poqdavid/Baseband-guard/raw/main/setup.sh | bash
-    
-    info -n "Adding Baseband Guard into kconfig"
-    sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig
-    
-    if [[ "$kernel_version" == 6.* ]]; then
-        info -n "Applying unicode bypass fix for 6.1+..."
-        patch -p1 < "$KERNEL_PATCHES/common/unicode_bypass_fix_6.1+.patch"
-    else
-        info -n "Applying unicode bypass fix for 6.1-..."
-        patch -p1 < "$KERNEL_PATCHES/common/unicode_bypass_fix_6.1-.patch"
-    fi
-    
-    info -n "Applying droidspaces patch (fix_sysvipc_kabi_6_7_8.patch)..."
-    patch -p1 < "$KERNEL_PATCHES/common/droidspaces/fix_sysvipc_kabi_6_7_8.patch"
-    
-    if [[ "$kernel_version" == 5.10* ]]; then
-        info -n "Applying droidspaces patch (fix_abi_padding_for_posix_mqueue.patch)..."
-        patch -p1 < "$KERNEL_PATCHES/common/droidspaces/fix_abi_padding_for_posix_mqueue.patch"
-    fi
-    
-    info -n "Applying droidspaces patch (0001-Guard-USER_NS-for-non-root-users.patch)..."
-    patch -p1 < "$KERNEL_PATCHES/common/droidspaces/0001-Guard-USER_NS-for-non-root-users.patch"
-    
-    info -n "Applying NTSync patch (ntsync_base.patch)..."
-    patch -p1 < "$KERNEL_PATCHES/common/ntsync/ntsync_base.patch"
-    
-    ntsync_compat_patch_file="ntsync_compat_${android_version}-${kernel_version}.patch"
-    ntsync_compat_patch_path="$KERNEL_PATCHES/common/ntsync/${ntsync_compat_patch_file}"
-    
-    info -n "Applying NTSync patch ($ntsync_compat_patch_file)..."
-    
-    if [[ -f "$ntsync_compat_patch_path" ]]; then
-        patch -p1 < "$ntsync_compat_patch_path"
-    else
-        info -n "No specific NTSync compat patch found for Android $android_version / Kernel $kernel_version; skipping compat patch."
-    fi
-    
-    popd > /dev/null
-    PATCH_END=$(_ts)
-else
-    warn -n "Patching steps skipped."
-fi
-
-# 6. Build
-BUILD_START=$(_ts)
-info -n "Starting Kernel Build..."
-
-pushd "$KERNEL_DIR" > /dev/null
-cd ../kernel
-./build/build.sh
-popd > /dev/null
-
-BUILD_END=$(_ts)
-info -n "Build completed successfully."
-send_discord_file "SUCCESS" "Kernel build completed successfully. 🎉" 65280
+        --set-val NF_NAT_IPV6 y
