@@ -560,6 +560,9 @@ done
 
 echo "MediaTek drivers disabled."
 
+# Fix K&R-style prototype in MediaTek SLBC driver
+sed -i 's/int slbc_sspm_enable(enable)/int slbc_sspm_enable(int enable)/' "${KERNEL_DIR}/drivers/misc/mediatek/slbc/slbc_ipi.c" || true
+
 # ========================================
 # GENERATE BUILD CONFIG + BUILD KERNEL
 # ========================================
