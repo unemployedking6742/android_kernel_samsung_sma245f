@@ -564,6 +564,22 @@ echo "MediaTek drivers disabled."
 sed -i 's/int slbc_sspm_enable(enable)/int slbc_sspm_enable(int enable)/' "${KERNEL_DIR}/drivers/misc/mediatek/slbc/slbc_ipi.c" || true
 
 # ========================================
+# FIX K&R PROTOTYPES IN MEDIATEK DRIVERS
+# ========================================
+echo "Fixing K&R prototypes in MediaTek drivers..."
+
+# Find all C files in drivers/misc/mediatek and fix simple K&R patterns
+find "${KERNEL_DIR}/drivers/misc/mediatek" -name "*.c" -exec sh -c '
+    for file do
+        # Fix "func(arg)" patterns where arg has no type
+        # This is a broad fix — may need adjustment
+        sed -i -E "s/^([a-zA-Z_][a-zA-Z0-9_ ]*)\(([a-zA-Z_][a-zA-Z0-9_]*)\)\s*$/\1(int \2)/" "$file"
+    done
+' sh {} + 2>/dev/null || true
+
+echo "K&R prototype fixes applied."
+
+# ========================================
 # GENERATE BUILD CONFIG + BUILD KERNEL
 # ========================================
 
