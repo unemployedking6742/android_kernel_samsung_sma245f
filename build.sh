@@ -546,6 +546,12 @@ find "${KERNEL_DIR}/drivers/gpu/drm/mediatek" -name "Makefile" -exec sed -i 's/ 
 find "${KERNEL_DIR}/drivers/soc/mediatek" -name "Makefile" -exec sed -i 's/ -Werror / /g' {} \; || true
 find "${KERNEL_DIR}/drivers/misc/mediatek" -name "Makefile" -exec sed -i 's/ -Werror / /g' {} \; || true
 
+# Disable all MediaTek drivers that have known ancient C issues
+for CONFIG in MTK_SLBC MTK_MML MTK_DEVAPC MTK_TINYSYS_SSPM MTK_APU; do
+    sed -i "s/^CONFIG_${CONFIG}=y/# CONFIG_${CONFIG} is not set/" "$DEFCONFIG_FILE" || true
+    sed -i "s/^CONFIG_${CONFIG}=m/# CONFIG_${CONFIG} is not set/" "$DEFCONFIG_FILE" || true
+done
+
 # ========================================
 # GENERATE BUILD CONFIG + BUILD KERNEL
 # ========================================
